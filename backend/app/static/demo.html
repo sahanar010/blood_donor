@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Realtime demo</title>
+<style>
+ :root{color-scheme:light dark;--b:#8884;--red:#c0392b}
+ body{font:14px system-ui,sans-serif;margin:0;padding:12px}
+ h1{font-size:16px;margin:0 0 10px} h2{font-size:14px;margin:0 0 8px}
+ .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+ @media(max-width:800px){.grid{grid-template-columns:1fr}}
+ .pane{border:1px solid var(--b);border-radius:8px;padding:10px}
+ input,button{font:inherit;padding:5px 8px;margin:2px 2px 2px 0}
+ button{cursor:pointer} button.go{background:var(--red);color:#fff;border:0;border-radius:4px}
+ .dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#999;margin-right:4px}
+ .dot.on{background:#2ecc71}
+ .card{border:1px solid var(--b);border-radius:6px;padding:6px 8px;margin:6px 0}
+ .card small{opacity:.75;display:block}
+ .log{font:12px ui-monospace,monospace;max-height:150px;overflow:auto;border-top:1px dashed var(--b);margin-top:8px;padding-top:6px;white-space:pre-wrap}
+ .ACCEPTED,.COMPLETED{color:#27ae60;font-weight:600}.DECLINED{color:#c0392b;font-weight:600}.REQUESTED{color:#e67e22;font-weight:600}
+</style></head><body>
+<h1>🩸 Realtime demo: act in one pane, watch the other update (no refresh)</h1>
+<div class="grid">
+ <div class="pane" id="H">
+  <h2><span class="dot" id="Hdot"></span>Hospital</h2>
+  <input id="Hemail" value="hospital1@demo.local"><input id="Hpw" type="password" value="hospital12345" style="width:110px">
+  <button onclick="hLogin()">Log in</button><br>
+  <button onclick="hCreate()">1. Create O+ emergency request</button>
+  <button onclick="hFind()">2. Find top 3</button>
+  <button class="go" onclick="hSend()">3. Send requests</button>
+  <div id="Hinfo"></div><div id="Hlist"></div><div class="log" id="Hlog"></div>
+ </div>
+ <div class="pane" id="D">
+  <h2><span class="dot" id="Ddot"></span>Donor</h2>
+  <input id="Demail" value="donor00001@demo.local"><input id="Dpw" type="password" value="donor12345" style="width:110px">
+  <button onclick="dLogin()">Log in</button>
+  <div><small>Tip: click a donor in the hospital list to fill their login (seed convention donorNNNNN@demo.local).</small></div>
+  <div id="Dlist"></div><div class="log" id="Dlog"></div>
+ </div>
+</div>
+<script>
+const API = location.origin, S = {H:{}, D:{}};
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const log = (p, m) => { const el = $(p+"log"); el.textContent = new Date().toLocaleTimeString()+"  "+m+"\n"+el.textContent; };
+
+async function api(p, path, opts = {}) {
+  const r = await fetch(API+path, {...opts, headers:{"Content-Type":"application/json", ...(S[p].token?{Authorization:"Bearer "+S[p].token}:{}) , ...(opts.headers||{})}});
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) { log(p, "ERROR "+r.status+": "+JSON.stringify(body.detail)); throw new Error(r.status); }
+  return body;
+}
+async function login(p) {
+  const form = new URLSearchParams({username:$(p+"email").value, password:$(p+"pw").value});
+  const r = await fetch(API+"/auth/login", {method:"POST", body:form});
+  if (!r.ok) return log(p, "Login failed ("+r.status+")");
+  S[p].token = (await r.json()).access_token;
+  log(p, "Logged in"); connect(p); refresh(p);
+}
+function connect(p) {
+  clearInterval(S[p].ping); if (S[p].ws) { S[p].ws.onclose = null; S[p].ws.close(); }
+  const ws = new WebSocket(API.replace(/^http/, "ws")+"/ws?token="+encodeURIComponent(S[p].token));
+  S[p].ws = ws;
+  ws.onopen = () => { $(p+"dot").className = "dot on"; S[p].ping = setInterval(() => ws.readyState===1 && ws.send("ping"), 30000); };
+  ws.onmessage = e => { const m = JSON.parse(e.data); if (m.type === "pong") return; log(p, "⚡ "+m.type); refresh(p); };
+  ws.onclose = () => { $(p+"dot").className = "dot"; clearInterval(S[p].ping); log(p, "Socket closed; reconnecting in 2s");
+                       setTimeout(() => S[p].token && connect(p), 2000); };   // REST refresh on reconnect = no missed state
+  ws.onopen = (o => () => { o(); refresh(p); })(ws.onopen);
+}
+async function refresh(p) { return p === "H" ? hRender() : dRender(); }
+
+// ---- hospital
+const hLogin = () => login("H");
+async function hCreate() {
+  const when = new Date(Date.now()+2*3600e3).toISOString();
+  const r = await api("H", "/hospital/requests", {method:"POST", body:JSON.stringify({blood_group:"O+", units_required:1, urgency:"EMERGENCY", required_time:when, max_distance_km:20})});
+  S.H.reqId = r.id; log("H", "Created request #"+r.id); hRender();
+}
+async function hFind() { if (!S.H.reqId) return log("H","Create a request first");
+  await api("H", `/hospital/requests/${S.H.reqId}/find-donors?top_n=3`, {method:"POST"}); hRender(); }
+async function hSend() { if (!S.H.reqId) return log("H","Create a request first");
+  await api("H", `/hospital/requests/${S.H.reqId}/send-requests`, {method:"POST", body:"{}"}); hRender(); }
+async function hAct(id, path, body) { await api("H", path, {method:"POST", body:JSON.stringify(body||{})}); hRender(); }
+async function hRender() {
+  if (!S.H.token || !S.H.reqId) return;
+  const [req, ms] = await Promise.all([api("H", "/hospital/requests/"+S.H.reqId), api("H", `/hospital/requests/${S.H.reqId}/matches`)]);
+  $("Hinfo").innerHTML = `<p>Request #${req.id}: ${esc(req.blood_group)} x${req.units_required} · <b>${esc(req.status)}</b> · fulfilled ${req.units_fulfilled}</p>`;
+  $("Hlist").innerHTML = ms.map(m => `<div class="card" onclick="useDonor('${esc(m.donor_ref)}')" style="cursor:pointer">
+     <span class="dot ${m.donor_online?"on":""}"></span><b>${esc(m.donor_ref)}</b> · score ${m.score} · ${m.distance_km} km · <span class="${m.status}">${m.status}</span>
+     <small>${m.reasons.map(esc).join(" • ")}</small>
+     ${m.donor_name ? `<small>📞 <b>${esc(m.donor_name)}</b> ${esc(m.donor_phone)}</small>` : ""}
+     ${m.status==="ACCEPTED" ? `<button onclick="event.stopPropagation();hAct(${m.match_id},'/hospital/matches/${m.match_id}/record-donation',{verified_volume_ml:350,experience_rating:5})">Record donation (350 ml)</button>` : ""}
+   </div>`).join("") || "<small>No matches yet</small>";
+}
+function useDonor(ref) { $("Demail").value = "donor"+String(parseInt(ref.slice(2),10)).padStart(5,"0")+"@demo.local"; }
+
+// ---- donor
+const dLogin = () => login("D");
+async function dRender() {
+  if (!S.D.token) return;
+  const rs = await api("D", "/donor/requests");
+  $("Dlist").innerHTML = rs.map(r => `<div class="card"><b>🩸 ${esc(r.blood_group)} needed · ${esc(r.urgency)}</b>
+     <small>${esc(r.hospital_name)} · ${r.distance_km} km · ${r.units_required} unit(s)</small>
+     <button class="go" onclick="dRespond(${r.match_id},true)">Accept</button><button onclick="dRespond(${r.match_id},false)">Decline</button></div>`).join("")
+     || "<small>No pending requests</small>";
+}
+async function dRespond(id, accepted) { await api("D", `/donor/requests/${id}/respond`, {method:"POST", body:JSON.stringify({accepted})}); log("D", accepted?"Accepted":"Declined"); dRender(); }
+</script></body></html>

@@ -1,0 +1,37 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: bloodmatch
+      POSTGRES_PASSWORD: bloodmatch
+      POSTGRES_DB: bloodmatch
+    ports: ["5488:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bloodmatch -d bloodmatch"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+
+  backend:
+    build: ./backend
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+psycopg://bloodmatch:bloodmatch@db:5432/bloodmatch
+      SECRET_KEY: dev-only-change-me
+      ADMIN_EMAIL: admin@demo.local
+      ADMIN_PASSWORD: admin12345
+    ports: ["8000:8000"]
+    volumes: ["./backend:/app"]
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+volumes:
+  pgdata:

@@ -1,0 +1,53 @@
+{
+  "features": [
+    "distance_km",
+    "travel_radius_km",
+    "distance_over_radius",
+    "in_preferred_window",
+    "rating_avg",
+    "response_rate",
+    "acceptance_rate",
+    "donation_count",
+    "avg_response_seconds",
+    "days_since_last_donation",
+    "urgency",
+    "hour",
+    "is_weekend"
+  ],
+  "trained_at": "2026-10-04T02:37:38.420949+00:00",
+  "xgboost_version": "3.4.1",
+  "data_source": "synthetic-simulation",
+  "train_rows": 80000,
+  "test_metrics": {
+    "rows": 26660,
+    "base_rate": 0.413,
+    "auc": 0.7862,
+    "oracle_auc": 0.8125,
+    "logloss": 0.5448,
+    "baseline_logloss": 0.6779,
+    "brier": 0.184,
+    "top3_expected_acceptance": {
+      "random": 0.4104,
+      "rules_only": 0.6752,
+      "ml_only": 0.7587,
+      "hybrid_10pct_ml": 0.7057,
+      "hybrid_30pct_ml": 0.7343,
+      "oracle": 0.7982
+    }
+  },
+  "feature_gain": {
+    "response_rate": 151.42,
+    "distance_km": 92.92,
+    "in_preferred_window": 84.58,
+    "acceptance_rate": 80.06,
+    "urgency": 55.08,
+    "distance_over_radius": 35.96,
+    "rating_avg": 31.93,
+    "hour": 28.65,
+    "avg_response_seconds": 12.63,
+    "is_weekend": 11.97,
+    "travel_radius_km": 9.01,
+    "days_since_last_donation": 8.17,
+    "donation_count": 7.96
+  }
+}

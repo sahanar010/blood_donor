@@ -1,0 +1,10 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body { @apply bg-paper text-ink antialiased; font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif; }
+.num { font-variant-numeric: tabular-nums; }
+button:focus-visible, input:focus-visible, select:focus-visible { @apply outline outline-2 outline-offset-2 outline-sea; }
+.btn { @apply rounded px-3 py-1.5 text-sm font-medium border border-line bg-white hover:bg-paper disabled:opacity-50; }
+.btn-primary { @apply border-blood bg-blood text-white hover:bg-blood/90; }
+.field { @apply w-full rounded border border-line bg-white px-2 py-1.5 text-sm; }
